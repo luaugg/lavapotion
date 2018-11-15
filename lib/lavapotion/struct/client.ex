@@ -1,16 +1,11 @@
 defmodule LavaPotion.Struct.Client do
-  defstruct [
-    :default_password = "youshallnotpass",
-    :default_port = 2333,
-    :user_id = nil,
-    :shard_count = 1,
-    :audio_nodes = []
-  ]
+  defstruct default_password: "youshallnotpass", default_port: 2333, user_id: nil, shard_count: 1, audio_nodes: %{}
+
 
   @typedoc """
 
   """
-  @type t :: __MODULE__{}
+  @type t :: %__MODULE__{}
 
   def new!(opts) do
     user_id = opts[:user_id]
