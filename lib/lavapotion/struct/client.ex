@@ -1,5 +1,5 @@
 defmodule LavaPotion.Struct.Client do
-  defstruct default_password: "youshallnotpass", default_port: 2333, user_id: nil, shard_count: 1, audio_nodes: %{}
+  defstruct default_password: "youshallnotpass", default_port: 2333, user_id: nil, shard_count: 1
 
 
   @typedoc """
@@ -7,7 +7,7 @@ defmodule LavaPotion.Struct.Client do
   """
   @type t :: %__MODULE__{}
 
-  def new!(opts) do
+  def new(opts) do
     user_id = opts[:user_id]
     if !is_binary(user_id) do
       raise "user id not a binary string or == nil"
