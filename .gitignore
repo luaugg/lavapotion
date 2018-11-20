@@ -3,3 +3,4 @@
 /deps/
 /config/
 *.iml
+*.lock
