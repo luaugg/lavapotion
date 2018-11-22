@@ -1,5 +1,7 @@
 defmodule LavaPotion.Struct.Node do
   use WebSockex
+  import WebSockex.Conn
+  import Poison
   defstruct password: nil, port: nil, address: nil, stats: %{}, players: %{}, client: nil
 
 
@@ -37,31 +39,31 @@ defmodule LavaPotion.Struct.Node do
 
   def handle_connect(conn, state) do
     IO.puts "Connected to #{conn.host}!"
+    {:ok, conn}
+  end
+
+  def handle_disconnect(params = %{reason: {:local, _}, conn: conn}, state) do
+    IO.puts "Client disconnected from #{conn.host}!"
     {:ok, state}
   end
 
-  def handle_disconnect(params = %{reason: {:local, _}}, state) do
-    IO.puts "Client disconnected from #{params[:conn].host}!"
+  def handle_disconnect(params = %{reason: {:local, _, _}, conn: conn}, state) do
+    IO.puts "Client disconnected from #{conn.host}!"
     {:ok, state}
   end
 
-  def handle_disconnect(params = %{reason: {:local, _, _}}, state) do
-    IO.puts "Client disconnected from #{params[:conn].host}!"
-    {:ok, state}
-  end
-
-  def handle_disconnect(params = %{reason: {:remote, code, message}, attempt_number: attempt_number}, state) when attempt_number < 5 do
-    IO.puts "Disconnected from #{params[:conn].host} by server with code: #{code} and message: #{message}! Reconnecting..."
+  def handle_disconnect(params = %{reason: {:remote, code, message}, attempt_number: attempt_number, conn: conn}, state) when attempt_number < 5 do
+    IO.puts "Disconnected from #{conn.host} by server with code: #{code} and message: #{message}! Reconnecting..."
     {:reconnect, state}
   end
 
-  def handle_disconnect(params = %{reason: {:remote, code, message}}, state) do
-    IO.puts "Disconnected from #{params[:conn].host} by server with code: #{code} and message: #{message}!"
+  def handle_disconnect(params = %{reason: {:remote, code, message}, conn: conn}, state) do
+    IO.puts "Disconnected from #{conn.host} by server with code: #{code} and message: #{message}!"
     {:ok, state}
   end
 
-  def handle_disconnect(params = %{reason: {:remote, :closed}}, state) do
-    IO.puts "Abruptly disconnected from #{params[:conn].host} by server!"
+  def handle_disconnect(params = %{reason: {:remote, :closed}, conn: conn}, state) do
+    IO.puts "Abruptly disconnected from #{conn.host} by server!"
     {:ok, state}
   end
 
@@ -70,8 +72,23 @@ defmodule LavaPotion.Struct.Node do
     {:ok, state}
   end
 
-  def handle_cast({:send, {:text, msg} = frame}, state) do
+  def handle_cast({:send, frame = {:text, msg}}, state) do
     IO.puts "Sending Message: #{inspect msg}"
     {:reply, frame, state}
+  end
+
+  def handle_cast({:voice_update, guild_id, session_id, token, endpoint}, state) do
+    alias LavaPotion.Struct.VoiceUpdate
+    event = %{guild_id: guild_id, token: token, endpoint: endpoint}
+    update = %VoiceUpdate{guildId: guild_id, sessionId: session_id, event: event}
+    socket_send(state, update)
+    {:noreply, state}
+  end
+
+  def handle_cast({:play, guild_id, track}, state) do
+    alias LavaPotion.Struct.Play
+    update = %Play{guildId: guild_id, track: track}
+    socket_send(state, update)
+    {:noreply, state}
   end
 end
