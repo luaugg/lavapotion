@@ -84,13 +84,13 @@ defmodule LavaPotion.Struct.Node do
 
   def handle_cast({:volume, guild_id, volume}, state) do
     alias LavaPotion.Struct.Volume
-    update = Poison.encode!(%Play{guildId: guild_id, volume: volume})
+    update = Poison.encode!(%Volume{guildId: guild_id, volume: volume})
     {:reply, {:text, update}, state}
   end
 
   def handle_cast({:seek, guild_id, position}, state) do
     alias LavaPotion.Struct.Seek
-    update = Poison.encode!(%Play{guildId: guild_id, position: position})
+    update = Poison.encode!(%Seek{guildId: guild_id, position: position})
     {:reply, {:text, update}, state}
   end
 
