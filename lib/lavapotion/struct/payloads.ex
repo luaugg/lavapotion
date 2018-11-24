@@ -30,10 +30,15 @@ end
 
 defmodule LavaPotion.Struct.Seek do
   @derive [Poison.Encoder]
-  defstruct [:guildId, :seek, op: "seek"]
+  defstruct [:guildId, :position, op: "seek"]
 end
 
 defmodule LavaPotion.Struct.Equalizer do
   @derive [Poison.Encoder]
   defstruct [:guildId, :bands, op: "equalizer"]
+end
+
+defmodule LavaPotion.Struct.LoadTrackResponse do
+  @derive [Poison.Encoder]
+  defstruct [:loadType, :playlistInfo, :tracks]
 end
