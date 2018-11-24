@@ -94,5 +94,11 @@ defmodule LavaPotion.Struct.Node do
     {:reply, {:text, update}, state}
   end
 
+  def handle_cast({:pause, guild_id, pause}, state) do
+    alias LavaPotion.Struct.Pause
+    update = Poison.encode!(%Pause{guildId: guild_id, pause: pause})
+    {:reply, {:text, update}, state}
+  end
+
   def handle_frame(frame, state), do: {:ok, state}
 end
