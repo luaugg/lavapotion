@@ -81,4 +81,6 @@ defmodule LavaPotion.Struct.Node do
     update = Poison.encode!(%Play{guildId: guild_id, track: track})
     {:reply, {:text, update}, state}
   end
+
+  def handle_frame(frame, state), do: {:ok, state}
 end
