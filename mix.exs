@@ -4,7 +4,7 @@ defmodule LavaPotion.MixProject do
   def project do
     [
       app: :lavapotion,
-      version: "0.1.0",
+      version: "0.2.0",
       elixir: "~> 1.7",
       start_permanent: Mix.env() == :prod,
       deps: deps(),
@@ -25,8 +25,8 @@ defmodule LavaPotion.MixProject do
   defp deps do
     [
       {:poison, "~> 3.1"},
-      {:httpoison, "~> 1.4"},
-      {:websockex, "~> 0.4.0"}
+      {:httpoison, "~> 0.13.0"},
+      {:websockex, "~> 0.4.0"},
     ]
   end
 end
