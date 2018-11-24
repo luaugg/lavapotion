@@ -1,6 +1,5 @@
 defmodule LavaPotion.Struct.Node do
   use WebSockex
-  import WebSockex.Conn
   import Poison
   defstruct password: nil, port: nil, address: nil, stats: %{}, players: %{}, client: nil
 
@@ -34,8 +33,11 @@ defmodule LavaPotion.Struct.Node do
     %__MODULE__{client: client, password: password, address: address, port: port}
   end
 
-  def start_link(mod), do: WebSockex.start_link("ws://#{mod.address}:#{mod.port}", __MODULE__, %{},
-      extra_headers: ["User-Id": mod.client.user_id, "Authorization": mod.password, "Num-Shards": mod.client.shard_count])
+  def start_link(mod) do
+    WebSockex.start_link("ws://#{mod.address}:#{mod.port}", __MODULE__, %{},
+      extra_headers: ["User-Id": mod.client.user_id, "Authorization": mod.password, "Num-Shards": mod.client.shard_count],
+      handle_initial_conn_failure: true)
+  end
 
   def handle_connect(conn, state) do
     IO.puts "Connected to #{conn.host}!"
@@ -67,28 +69,16 @@ defmodule LavaPotion.Struct.Node do
     {:ok, state}
   end
 
-  def handle_frame({:text, msg}, state) do
-    IO.puts "Received Message: #{inspect msg}"
-    {:ok, state}
-  end
-
-  def handle_cast({:send, frame = {:text, msg}}, state) do
-    IO.puts "Sending Message: #{inspect msg}"
-    {:reply, frame, state}
-  end
-
   def handle_cast({:voice_update, guild_id, session_id, token, endpoint}, state) do
     alias LavaPotion.Struct.VoiceUpdate
     event = %{guild_id: guild_id, token: token, endpoint: endpoint}
-    update = %VoiceUpdate{guildId: guild_id, sessionId: session_id, event: event}
-    socket_send(state, update)
-    {:noreply, state}
+    update = Poison.encode!(%VoiceUpdate{guildId: guild_id, sessionId: session_id, event: event})
+    {:reply, {:text, update}, state}
   end
 
   def handle_cast({:play, guild_id, track}, state) do
     alias LavaPotion.Struct.Play
-    update = %Play{guildId: guild_id, track: track}
-    socket_send(state, update)
-    {:noreply, state}
+    update = Poison.encode!(%Play{guildId: guild_id, track: track})
+    {:reply, {:text, update}, state}
   end
 end
