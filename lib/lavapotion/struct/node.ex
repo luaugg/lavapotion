@@ -100,5 +100,11 @@ defmodule LavaPotion.Struct.Node do
     {:reply, {:text, update}, state}
   end
 
+  def handle_cast({:destroy, guild_id}, state) do
+    alias LavaPotion.Struct.Destroy
+    update = Poison.encode!(%Destroy{guildId: guild_id})
+    {:reply, {:text, update}, state}
+  end
+
   def handle_frame(frame, state), do: {:ok, state}
 end
