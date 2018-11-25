@@ -56,3 +56,8 @@ defmodule LavaPotion.Struct.LoadTrackResponse do
   @derive [Poison.Encoder]
   defstruct [:loadType, :playlistInfo, :tracks]
 end
+
+defmodule LavaPotion.Struct.AudioTrack do
+  @derive [Poison.Encoder]
+  defstruct [:title, :author, :length, :identifier, :uri, :isStream, :isSeekable, :position]
+end
