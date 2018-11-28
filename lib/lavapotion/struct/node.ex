@@ -15,12 +15,14 @@
 defmodule LavaPotion.Struct.Node do
   use WebSockex
   import Poison
-  alias LavaPotion.Struct.{VoiceUpdate, Play, Pause, Stop, Destroy, Volume, Seek, Player, AudioTrack}
+  alias LavaPotion.Struct.{VoiceUpdate, Play, Pause, Stop, Destroy, Volume, Seek, Player, AudioTrack, Stats}
   require Logger
 
   defstruct [:password, :port, :address, :client]
 
   @ets_lookup :lavapotion_ets_table
+  @stats_max_int :math.pow(2, 31) - 1
+  @stats_no_stats @stats_max_int - 1
 
   @typedoc """
 
@@ -61,7 +63,7 @@ defmodule LavaPotion.Struct.Node do
 
   def handle_connect(conn, _state) do
     Logger.info "Connected to #{conn.host}!"
-    :ets.insert(@ets_lookup, {conn.host, %{stats: nil, players: %{}}})
+    :ets.insert(@ets_lookup, {conn.host, %{pid: self(), stats: nil, players: %{}}})
     {:ok, conn}
   end
 
@@ -92,13 +94,54 @@ defmodule LavaPotion.Struct.Node do
     {:ok, state}
   end
 
+  def best_node() do
+    list = :ets.tab2list(@ets_lookup) # woefully inefficient, might replace with select later?
+    {node, record} = {nil, @stats_max_int}
+    Enum.each(list, fn elem ->
+      result = case elem do
+        {host, %{stats: nil}} -> {host, @stats_no_stats}
+        {host, %{stats: %Stats{playingPlayers: playing_players, cpu: %{systemLoad: system_load}, frameStats: %{nulled: nulled, deficit: deficit}}}} ->
+          {host, playing_players +
+            (:math.pow(1.05, 100 * system_load) * 10 - 10) +
+            (:math.pow(1.03, 500 * (deficit / 3000)) * 600 - 600) +
+            (:math.pow(10.3, 500 + (nulled / 3000)) * 300 - 300) * 2}
+        {host, %{stats: %Stats{playingPlayers: playing_players, cpu: %{systemLoad: system_load}, frameStats: nil}}} ->
+          {host, playing_players + (:math.pow(1.05, 100 * system_load) * 10 - 10)}
+        {host, _} -> {host, @stats_no_stats}
+        _ -> {:error, :malformed_data}
+      end
+      if result !== {:error, :malformed_data} do
+        {node, record} = result
+      end
+    end)
+    case node do
+      nil -> {:error, :no_available_node}
+      _ -> {:ok, node}
+    end
+  end
+
+  def node(address) when is_binary(node) do
+    [{_, node}] = :ets.lookup(@ets_lookup, address)
+    node
+  end
+
   def players(node) when not is_nil(node) do
     [{_, %{players: players}}] = :ets.lookup(@ets_lookup, node.address)
     players
   end
 
+  def players(address) when is_binary(address) do
+    [{_, %{players: players}}] = :ets.lookup(@ets_lookup, address)
+    players
+  end
+
   def player(node, guild_id) when not is_nil(node) and is_binary(guild_id) do
     [{_, %{players: players}}] = :ets.lookup(@ets_lookup, node.address)
+    Map.get(players, guild_id)
+  end
+
+  def player(address, guild_id) when is_binary(node) and is_binary(guild_id) do
+    [{_, %{players: players}}] = :ets.lookup(@ets_lookup, address)
     Map.get(players, guild_id)
   end
 

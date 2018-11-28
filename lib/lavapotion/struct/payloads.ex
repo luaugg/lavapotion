@@ -61,3 +61,8 @@ defmodule LavaPotion.Struct.AudioTrack do
   @derive [Poison.Encoder]
   defstruct [:title, :author, :length, :identifier, :uri, :isStream, :isSeekable, :position]
 end
+
+defmodule LavaPotion.Struct.Stats do
+  @derive [Poison.Encoder]
+  defstruct [:players, :playingPlayers, :uptime, :memory, :cpu, :frameStats]
+end
