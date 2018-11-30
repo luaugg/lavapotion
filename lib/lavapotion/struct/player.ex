@@ -13,28 +13,31 @@
 # limitations under the License.
 
 defmodule LavaPotion.Struct.Player do
-  defstruct [:pid, :node, :guild_id, :session_id, :token, :endpoint, :track, :position, :volume, :is_real, :paused]
+  alias LavaPotion.Struct.Node
+  defstruct [:node, :guild_id, :session_id, :token, :endpoint, :track, :position, :volume, :is_real, :paused]
 
-  def play(player, track) when not is_nil(player) and is_binary(track) do
-    info = LavaPotion.Api.decode_track(player.node, track)
-    WebSockex.cast(player.pid, {:play, player, {track, info}})
+  def play(player = %__MODULE__{node: %Node{address: address}}, track) when is_binary(track) do
+    info = LavaPotion.Api.decode_track(track)
+    WebSockex.cast(Node.pid(address), {:play, player, {track, info}})
   end
-  def play(player, %{"track" => track, "info" => info}), do: WebSockex.cast(player.pid, {:play, player, {track, info}})
-
-  def volume(player, volume) when not is_nil(player) and is_number(volume) and volume >= 0 and volume <= 1000 do
-    WebSockex.cast(player.pid, {:volume, player, volume})
-  end
-
-  def seek(player, position) when not is_nil(player) and is_number(position) and position >= 0 do
-    WebSockex.cast(player.pid, {:seek, player, position})
+  def play(player = %__MODULE__{node: %Node{address: address}}, %{"track" => track, "info" => info}) do
+    WebSockex.cast(Node.pid(address), {:play, player, {track, info}})
   end
 
-  def pause(player) when not is_nil(player), do: WebSockex.cast(player.pid, {:pause, player, true})
-  def resume(player) when not is_nil(player), do: WebSockex.cast(player.pid, {:pause, player, false})
-  def destroy(player) when not is_nil(player), do: WebSockex.cast(player.pid, {:destroy, player})
-  def stop(player) when not is_nil(player), do: WebSockex.cast(player.pid, {:stop, player})
+  def volume(player = %__MODULE__{node: %Node{address: address}}, volume) when is_number(volume) and volume >= 0 and volume <= 1000 do
+    WebSockex.cast(Node.pid(address), {:volume, player, volume})
+  end
 
-  def set_node(player, node) when not is_nil(player) and not is_nil(node) do
-    WebSockex.cast(player.pid, {:update_node, player, node})
+  def seek(player = %__MODULE__{node: %Node{address: address}}, position) when is_number(position) and position >= 0 do
+    WebSockex.cast(Node.pid(address), {:seek, player, position})
+  end
+
+  def pause(player = %__MODULE__{node: %Node{address: address}}), do: WebSockex.cast(Node.pid(address), {:pause, player, true})
+  def resume(player = %__MODULE__{node: %Node{address: address}}), do: WebSockex.cast(Node.pid(address), {:pause, player, false})
+  def destroy(player = %__MODULE__{node: %Node{address: address}}), do: WebSockex.cast(Node.pid(address), {:destroy, player})
+  def stop(player = %__MODULE__{node: %Node{address: address}}), do: WebSockex.cast(Node.pid(address), {:stop, player})
+
+  def set_node(player = %__MODULE__{node: %Node{address: address}, is_real: true}, node = %Node{}) do
+    WebSockex.cast(Node.pid(address), {:update_node, player, node})
   end
 end
