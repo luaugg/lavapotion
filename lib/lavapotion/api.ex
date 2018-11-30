@@ -13,21 +13,41 @@
 # limitations under the License.
 
 defmodule LavaPotion.Api do
-  alias LavaPotion.Struct.{LoadTrackResponse, AudioTrack, Player}
+  alias LavaPotion.Struct.{LoadTrackResponse, AudioTrack, Player, Node}
 
   def start(), do: HTTPoison.start
 
   def initialize(pid, guild_id, session_id, token, endpoint) when is_pid(pid) and is_binary(guild_id) and is_binary(session_id) and is_binary(token) and is_binary(endpoint) do
-    WebSockex.cast(pid, {:voice_update, %Player{guild_id: guild_id, session_id: session_id, token: token, endpoint: endpoint, is_real: false, pid: pid}})
+    WebSockex.cast(pid, {:voice_update, %Player{guild_id: guild_id, session_id: session_id, token: token, endpoint: endpoint, is_real: false}})
   end
 
-  def load_tracks(node, identifier) when not is_nil(node) and is_binary(identifier) do
-    HTTPoison.get!("http://#{node.address}:#{node.port}/loadtracks?identifier=#{URI.encode(identifier)}", ["Authorization": node.password]).body
+  def initialize(pid, player = %Player{is_real: false}) when is_pid(pid) do
+    WebSockex.cast(pid, {:voice_update, player})
+  end
+
+  def load_tracks(identifier) do
+    load_tracks(Node.best_node(), identifier)
+  end
+
+  def load_tracks(%Node{address: address, port: port, password: password}, identifier) do
+    load_tracks(address, port, password, identifier)
+  end
+
+  def load_tracks(address, port, password, identifier) when is_binary(address) and is_number(port) and is_binary(password) and is_binary(identifier) do
+    HTTPoison.get!("http://#{address}:#{port}/loadtracks?identifier=#{URI.encode(identifier)}", ["Authorization": password]).body
     |> Poison.decode!(as: %LoadTrackResponse{})
   end
 
-  def decode_track(node, track) when not is_nil(node) and is_binary(track) do
-    HTTPoison.get!("http://#{node.address}:#{node.port}/decodetrack?track=#{URI.encode(track)}", ["Authorization": node.password]).body
+  def decode_track(track) do
+    decode_track(Node.best_node(), track)
+  end
+
+  def decode_track(%Node{address: address, port: port, password: password}, track) do
+    decode_track(address, port, password, track)
+  end
+
+  def decode_track(address, port, password, track) when is_binary(address) and is_number(port) and is_binary(password) and is_binary(track) do
+    HTTPoison.get!("http://#{address}:#{port}/decodetrack?track=#{URI.encode(track)}", ["Authorization": password]).body
     |> Poison.decode!(as: %AudioTrack{})
   end
 end

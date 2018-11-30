@@ -54,16 +54,16 @@ defmodule LavaPotion.Struct.Node do
   end
 
   def start_link(mod) do
-    result = WebSockex.start_link("ws://#{mod.address}:#{mod.port}", __MODULE__, %{},
+    result = {:ok, pid} = WebSockex.start_link("ws://#{mod.address}:#{mod.port}", __MODULE__, %{},
       extra_headers: ["User-Id": mod.client.user_id, "Authorization": mod.password, "Num-Shards": mod.client.shard_count],
       handle_initial_conn_failure: true, async: true)
     :ets.new(@ets_lookup, [:set, :public, :named_table])
-    IO.inspect result
+    :ets.insert(@ets_lookup, {mod.address, %{node: mod, stats: nil, players: %{}, pid: pid}})
+    result
   end
 
   def handle_connect(conn, _state) do
     Logger.info "Connected to #{conn.host}!"
-    :ets.insert(@ets_lookup, {conn.host, %{pid: self(), stats: nil, players: %{}}})
     {:ok, conn}
   end
 
@@ -94,62 +94,70 @@ defmodule LavaPotion.Struct.Node do
     {:ok, state}
   end
 
+  defp best_node_iter(current = {_address, record}, nodes) do
+    Logger.info "called?"
+      if Enum.empty?(nodes) do
+        current
+      else
+        node = List.first(nodes)
+        nodes = List.delete_at(nodes, 0)
+        result = case node do
+          {host, %{stats: nil}} -> {host, @stats_no_stats}
+          {host, %{stats: %Stats{playingPlayers: playing_players, cpu: %{systemLoad: system_load}, frameStats: %{nulled: nulled, deficit: deficit}}}} ->
+            {host, playing_players +
+              (:math.pow(1.05, 100 * system_load) * 10 - 10) +
+              (:math.pow(1.03, 500 * (deficit / 3000)) * 600 - 600) +
+              (:math.pow(10.3, 500 + (nulled / 3000)) * 300 - 300) * 2}
+          {host, %{stats: %Stats{playingPlayers: playing_players, cpu: %{systemLoad: system_load}, frameStats: nil}}} ->
+            {host, playing_players + (:math.pow(1.05, 100 * system_load) * 10 - 10)}
+          {host, _} -> {host, @stats_no_stats}
+          _ -> {:error, :malformed_data}
+        end
+
+        if result !== {:error, :malformed_data} && elem(result, 1) < record do
+          best_node_iter(result, nodes)
+        else
+          best_node_iter(current, nodes)
+        end
+      end
+  end
   def best_node() do
     list = :ets.tab2list(@ets_lookup) # woefully inefficient, might replace with select later?
-    {node, record} = {nil, @stats_max_int}
-    Enum.each(list, fn elem ->
-      result = case elem do
-        {host, %{stats: nil}} -> {host, @stats_no_stats}
-        {host, %{stats: %Stats{playingPlayers: playing_players, cpu: %{systemLoad: system_load}, frameStats: %{nulled: nulled, deficit: deficit}}}} ->
-          {host, playing_players +
-            (:math.pow(1.05, 100 * system_load) * 10 - 10) +
-            (:math.pow(1.03, 500 * (deficit / 3000)) * 600 - 600) +
-            (:math.pow(10.3, 500 + (nulled / 3000)) * 300 - 300) * 2}
-        {host, %{stats: %Stats{playingPlayers: playing_players, cpu: %{systemLoad: system_load}, frameStats: nil}}} ->
-          {host, playing_players + (:math.pow(1.05, 100 * system_load) * 10 - 10)}
-        {host, _} -> {host, @stats_no_stats}
-        _ -> {:error, :malformed_data}
-      end
-      if result !== {:error, :malformed_data} do
-        {node, record} = result
-      end
-    end)
-    case node do
-      nil -> {:error, :no_available_node}
-      _ -> {:ok, node}
+    case best_node_iter({nil, @stats_max_int}, list) do
+      {nil, _} -> {:error, :no_available_node}
+      {address, _} -> {:ok, address}
+      _ -> {:error, :malformed_return_value}
     end
   end
 
-  def node(address) when is_binary(node) do
+  def pid(%__MODULE__{address: address}), do: pid(address)
+  def pid(address) when is_binary(address) do
+    [{_, %{pid: pid}}] = :ets.lookup(@ets_lookup, address)
+    pid
+  end
+
+  def node(address) when is_binary(address) do
     [{_, node}] = :ets.lookup(@ets_lookup, address)
     node
   end
 
-  def players(node) when not is_nil(node) do
-    [{_, %{players: players}}] = :ets.lookup(@ets_lookup, node.address)
-    players
-  end
-
+  def players(%__MODULE__{address: address}), do: players(address)
   def players(address) when is_binary(address) do
     [{_, %{players: players}}] = :ets.lookup(@ets_lookup, address)
     players
   end
 
-  def player(node, guild_id) when not is_nil(node) and is_binary(guild_id) do
-    [{_, %{players: players}}] = :ets.lookup(@ets_lookup, node.address)
-    Map.get(players, guild_id)
-  end
-
-  def player(address, guild_id) when is_binary(node) and is_binary(guild_id) do
+  def player(%__MODULE__{address: address}, guild_id), do: player(address, guild_id)
+  def player(address, guild_id) when is_binary(address) and is_binary(guild_id) do
     [{_, %{players: players}}] = :ets.lookup(@ets_lookup, address)
-    Map.get(players, guild_id)
+    players[guild_id]
   end
 
   def handle_cast({:voice_update, player = %Player{guild_id: guild_id, token: token, endpoint: endpoint, session_id: session_id, is_real: false}}, state) do
     event = %{guild_id: guild_id, token: token, endpoint: endpoint}
     update = encode!(%VoiceUpdate{guildId: guild_id, sessionId: session_id, event: event})
-    [{_, map = %{players: players}}] = :ets.lookup(@ets_lookup, state.host)
-    players = Map.put(players, guild_id, %Player{player | is_real: true})
+    [{_, map = %{node: node, players: players}}] = :ets.lookup(@ets_lookup, state.host)
+    players = Map.put(players, guild_id, %Player{player | node: node, is_real: true})
 
     :ets.insert(@ets_lookup, {state.host, %{map | players: players}})
     {:reply, {:text, update}, state}
