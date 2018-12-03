@@ -26,7 +26,8 @@ defmodule LavaPotion.Api do
   end
 
   def load_tracks(identifier) do
-    load_tracks(Node.best_node(), identifier)
+    {:ok, node} = Node.best_node()
+    load_tracks(node, identifier)
   end
 
   def load_tracks(%Node{address: address, port: port, password: password}, identifier) do
@@ -39,7 +40,8 @@ defmodule LavaPotion.Api do
   end
 
   def decode_track(track) do
-    decode_track(Node.best_node(), track)
+    {:ok, node} = Node.best_node()
+    decode_track(node, track)
   end
 
   def decode_track(%Node{address: address, port: port, password: password}, track) do

@@ -57,7 +57,7 @@ defmodule LavaPotion.Struct.Node do
     result = {:ok, pid} = WebSockex.start_link("ws://#{mod.address}:#{mod.port}", __MODULE__, %{},
       extra_headers: ["User-Id": mod.client.user_id, "Authorization": mod.password, "Num-Shards": mod.client.shard_count],
       handle_initial_conn_failure: true, async: true)
-    :ets.new(@ets_lookup, [:set, :public, :named_table])
+    if :ets.whereis(@ets_lookup) === :undefined, do: :ets.new(@ets_lookup, [:set, :public, :named_table])
     :ets.insert(@ets_lookup, {mod.address, %{node: mod, stats: nil, players: %{}, pid: pid}})
     result
   end
@@ -94,38 +94,37 @@ defmodule LavaPotion.Struct.Node do
     {:ok, state}
   end
 
-  defp best_node_iter(current = {_address, record}, nodes) do
-    Logger.info "called?"
-      if Enum.empty?(nodes) do
-        current
-      else
-        node = List.first(nodes)
-        nodes = List.delete_at(nodes, 0)
-        result = case node do
-          {host, %{stats: nil}} -> {host, @stats_no_stats}
-          {host, %{stats: %Stats{playingPlayers: playing_players, cpu: %{systemLoad: system_load}, frameStats: %{nulled: nulled, deficit: deficit}}}} ->
-            {host, playing_players +
-              (:math.pow(1.05, 100 * system_load) * 10 - 10) +
-              (:math.pow(1.03, 500 * (deficit / 3000)) * 600 - 600) +
-              (:math.pow(10.3, 500 + (nulled / 3000)) * 300 - 300) * 2}
-          {host, %{stats: %Stats{playingPlayers: playing_players, cpu: %{systemLoad: system_load}, frameStats: nil}}} ->
-            {host, playing_players + (:math.pow(1.05, 100 * system_load) * 10 - 10)}
-          {host, _} -> {host, @stats_no_stats}
-          _ -> {:error, :malformed_data}
-        end
-
-        if result !== {:error, :malformed_data} && elem(result, 1) < record do
-          best_node_iter(result, nodes)
-        else
-          best_node_iter(current, nodes)
-        end
+  defp best_node_iter(current = {_node, record}, nodes) do
+    if Enum.empty?(nodes) do
+      current
+    else
+      node = List.first(nodes)
+      nodes = List.delete_at(nodes, 0)
+      result = case node do
+        {_host, %{node: node = %__MODULE__{}, stats: nil}} -> {node, @stats_no_stats}
+        {_host, %{node: node = %__MODULE__{}, stats: %Stats{playingPlayers: playing_players, cpu: %{systemLoad: system_load}, frameStats: %{nulled: nulled, deficit: deficit}}}} ->
+          {node, playing_players +
+            (:math.pow(1.05, 100 * system_load) * 10 - 10) +
+            (:math.pow(1.03, 500 * (deficit / 3000)) * 600 - 600) +
+            (:math.pow(10.3, 500 + (nulled / 3000)) * 300 - 300) * 2}
+        {_host, %{node: node = %__MODULE__{}, stats: %Stats{playingPlayers: playing_players, cpu: %{systemLoad: system_load}, frameStats: nil}}} ->
+          {node, playing_players + (:math.pow(1.05, 100 * system_load) * 10 - 10)}
+        {_host, %{node: node = %__MODULE__{}}} -> {node, @stats_no_stats}
+        _ -> {:error, :malformed_data}
       end
+
+      if result !== {:error, :malformed_data} && elem(result, 1) < record do
+        best_node_iter(result, nodes)
+      else
+        best_node_iter(current, nodes)
+      end
+    end
   end
   def best_node() do
     list = :ets.tab2list(@ets_lookup) # woefully inefficient, might replace with select later?
     case best_node_iter({nil, @stats_max_int}, list) do
       {nil, _} -> {:error, :no_available_node}
-      {address, _} -> {:ok, address}
+      {node = %__MODULE__{}, _} -> {:ok, node}
       _ -> {:error, :malformed_return_value}
     end
   end
@@ -137,7 +136,7 @@ defmodule LavaPotion.Struct.Node do
   end
 
   def node(address) when is_binary(address) do
-    [{_, node}] = :ets.lookup(@ets_lookup, address)
+    [{_, %{node: node = %__MODULE__{}}}] = :ets.lookup(@ets_lookup, address)
     node
   end
 
@@ -231,11 +230,19 @@ defmodule LavaPotion.Struct.Node do
     end
   end
 
-  def handle_cast({:update_node, player = %Player{guild_id: guild_id, is_real: true, node: nil}, node}, state) do
+  def handle_cast({:update_node, player = %Player{guild_id: guild_id, is_real: true, node: old_node = %__MODULE__{}}, new_node = %__MODULE__{}}, state) when new_node !== old_node do
+    Player.destroy(player)
     [{_, map = %{players: players}}] = :ets.lookup(@ets_lookup, state.host)
-    players = Map.put(players, guild_id, %Player{player | node: node})
+    player = %Player{player | node: new_node, is_real: false}
+    players = Map.put(players, guild_id, player)
 
+    Player.initialize(player)
     :ets.insert(@ets_lookup, {state.host, %{map | players: players}})
+    {:ok, state}
+  end
+
+  def handle_cast({:update_node, %Player{guild_id: guild_id, is_real: true, node: old_node = %__MODULE__{}}, new_node = %__MODULE__{}}, state) when new_node === old_node do
+    Logger.warn "player for guild id #{guild_id} attempt to update node to current node?"
     {:ok, state}
   end
 
