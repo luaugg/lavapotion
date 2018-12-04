@@ -15,7 +15,7 @@
 defmodule LavaPotion.Struct.Node do
   use WebSockex
   import Poison
-  alias LavaPotion.Struct.{VoiceUpdate, Play, Pause, Stop, Destroy, Volume, Seek, Player, AudioTrack, Stats}
+  alias LavaPotion.Struct.{VoiceUpdate, Play, Pause, Stop, Destroy, Volume, Seek, Player, Stats}
   require Logger
 
   defstruct [:password, :port, :address, :client]
@@ -180,16 +180,13 @@ defmodule LavaPotion.Struct.Node do
     {:reply, {:text, update}, state}
   end
 
-  def handle_cast({:seek, player = %Player{guild_id: guild_id, is_real: true, track: {_data, %AudioTrack{length: length}}}, position}, state) do
+  def handle_cast({:seek, %Player{guild_id: guild_id, is_real: true, track: {_data, %{"length" => length}}}, position}, state) do
     if position > length do
       Logger.warn("guild id: #{guild_id} | specified position (#{inspect position}) is larger than the length of the track (#{inspect length})")
       {:ok, state}
     else
       update = encode!(%Seek{guildId: guild_id, position: position})
-      [{_, map = %{players: players}}] = :ets.lookup(@ets_lookup, state.host)
-      players = Map.put(players, guild_id, %Player{player | position: position})
-
-      :ets.insert(@ets_lookup, {state.host, %{map | players: players}})
+      # updated upon player update
       {:reply, {:text, update}, state}
     end
   end
@@ -216,16 +213,13 @@ defmodule LavaPotion.Struct.Node do
     {:reply, {:text, update}, state}
   end
 
-  def handle_cast({:stop, player = %Player{guild_id: guild_id, is_real: true, track: track}}, state) do
+  def handle_cast({:stop, %Player{guild_id: guild_id, is_real: true, track: track}}, state) do
     if track == nil do
       Logger.warn "player for guild id #{guild_id} already isn't playing anything."
       {:ok, state}
     else
       update = encode!(%Stop{guildId: guild_id})
-      [{_, map = %{players: players}}] = :ets.lookup(@ets_lookup, state.host)
-      players = Map.put(players, guild_id, %Player{player | track: nil})
-
-      :ets.insert(@ets_lookup, {state.host, %{map | players: players}})
+      # updated upon TrackEndEvent
       {:reply, {:text, update}, state}
     end
   end
@@ -249,6 +243,45 @@ defmodule LavaPotion.Struct.Node do
   def terminate(_reason, state) do
     Logger.warn "Connection to #{state.host} terminated!"
     exit(:normal)
+  end
+
+  def handle_frame({:text, message}, state) do
+    data = %{"op" => op} = Poison.decode!(message)
+    case op do
+      "stats" ->
+        stats = Poison.decode!(message, as: %Stats{})
+        [{_, map = %{}}] = :ets.lookup(@ets_lookup, state.host)
+        :ets.insert(@ets_lookup, {state.host, %{map | stats: stats}})
+
+      "playerUpdate" ->
+        %{"guildId" => guild_id, "state" => %{"position" => position, "time" => time}} = data
+        [{_, map = %{players: players = %{^guild_id => player = %Player{}}}}] = :ets.lookup(@ets_lookup, state.host)
+        players = Map.put(players, guild_id, %Player{player | raw_position: position, raw_timestamp: time})
+        :ets.insert(@ets_lookup, {state.host, %{map | players: players}})
+
+      "event" ->
+        # TODO: actual handling/event publishing
+        %{"guildId" => guild_id, "type" => type} = data
+        case type do
+          "TrackEndEvent" ->
+            [{_, map = %{players: players = %{^guild_id => player = %Player{}}}}] = :ets.lookup(@ets_lookup, state.host)
+            players = Map.put(players, guild_id, %Player{player | track: nil})
+            :ets.insert(@ets_lookup, {state.host, %{map | players: players}})
+
+          "TrackExceptionEvent" ->
+            Logger.error "error in player for guild id: #{guild_id} | message: #{data["error"]}"
+
+          "TrackStuckEvent" ->
+            Logger.warn "track stuck for player/guild id: #{guild_id}"
+
+          "WebSocketClosedEvent" ->
+            Logger.warn "audio websocket connection to discord closed for guild id: #{guild_id}, code: #{data["code"]}, reason: #{data["reason"]}"
+        end
+
+      _ ->
+        Logger.warn "Unhandled Event: #{op} | Data: #{message}"
+    end
+    {:ok, state}
   end
 
   def handle_frame(_frame, state), do: {:ok, state}

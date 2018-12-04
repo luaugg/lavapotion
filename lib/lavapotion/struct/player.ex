@@ -14,7 +14,7 @@
 
 defmodule LavaPotion.Struct.Player do
   alias LavaPotion.Struct.Node
-  defstruct [:node, :guild_id, :session_id, :token, :endpoint, :track, :position, :volume, :is_real, :paused]
+  defstruct [:node, :guild_id, :session_id, :token, :endpoint, :track, :volume, :is_real, :paused, :raw_timestamp, :raw_position]
 
   def initialize(player = %__MODULE__{node: %Node{address: address}}) do
     WebSockex.cast(Node.pid(address), {:voice_update, player})
@@ -31,7 +31,7 @@ defmodule LavaPotion.Struct.Player do
     end
   end
 
-  def play(player = %__MODULE__{node: %Node{address: old_address}}, %{"track" => track, "info" => info}) do
+  def play(player = %__MODULE__{node: %Node{address: old_address}}, %{"track" => track, "info" => info = %{}}) do
     {:ok, node = %Node{address: address}} = Node.best_node()
     if old_address !== address do
       set_node(player, node)
@@ -53,6 +53,16 @@ defmodule LavaPotion.Struct.Player do
   def resume(player = %__MODULE__{node: %Node{address: address}}), do: WebSockex.cast(Node.pid(address), {:pause, player, false})
   def destroy(player = %__MODULE__{node: %Node{address: address}}), do: WebSockex.cast(Node.pid(address), {:destroy, player})
   def stop(player = %__MODULE__{node: %Node{address: address}}), do: WebSockex.cast(Node.pid(address), {:stop, player})
+
+  def position(player = %__MODULE__{node: %Node{}, raw_position: raw_position, raw_timestamp: raw_timestamp})
+    when not is_nil(raw_position) and not is_nil(raw_timestamp) do
+    %__MODULE__{paused: paused, track: {_, %{"length" => length}}} = player
+    if paused do
+      min(raw_position, length)
+    else
+      min(raw_position + (:os.system_time(:millisecond) - raw_timestamp), length)
+    end
+  end
 
   def set_node(player = %__MODULE__{node: %Node{address: address}, is_real: true}, node = %Node{}) do
     WebSockex.cast(Node.pid(address), {:update_node, player, node})
