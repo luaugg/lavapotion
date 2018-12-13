@@ -64,5 +64,5 @@ end
 
 defmodule LavaPotion.Struct.Stats do
   @derive [Poison.Encoder]
-  defstruct [:players, :playingPlayers, :uptime, :memory, :cpu, :frameStats]
+  defstruct [:players, :playing_players, :uptime, :memory, :cpu, :frame_stats]
 end

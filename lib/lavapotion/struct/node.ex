@@ -14,8 +14,12 @@
 
 defmodule LavaPotion.Struct.Node do
   use WebSockex
+
   import Poison
+
   alias LavaPotion.Struct.{VoiceUpdate, Play, Pause, Stop, Destroy, Volume, Seek, Player, Stats}
+  alias LavaPotion.Stage.Producer
+
   require Logger
 
   defstruct [:password, :port, :address, :client]
@@ -102,12 +106,12 @@ defmodule LavaPotion.Struct.Node do
       nodes = List.delete_at(nodes, 0)
       result = case node do
         {_host, %{node: node = %__MODULE__{}, stats: nil}} -> {node, @stats_no_stats}
-        {_host, %{node: node = %__MODULE__{}, stats: %Stats{playingPlayers: playing_players, cpu: %{systemLoad: system_load}, frameStats: %{nulled: nulled, deficit: deficit}}}} ->
+        {_host, %{node: node = %__MODULE__{}, stats: %Stats{playing_players: playing_players, cpu: %{"systemLoad" => system_load}, frame_stats: %{"nulled" => nulled, "deficit" => deficit}}}} ->
           {node, playing_players +
             (:math.pow(1.05, 100 * system_load) * 10 - 10) +
             (:math.pow(1.03, 500 * (deficit / 3000)) * 600 - 600) +
             (:math.pow(10.3, 500 + (nulled / 3000)) * 300 - 300) * 2}
-        {_host, %{node: node = %__MODULE__{}, stats: %Stats{playingPlayers: playing_players, cpu: %{systemLoad: system_load}, frameStats: nil}}} ->
+        {_host, %{node: node = %__MODULE__{}, stats: %Stats{playing_players: playing_players, cpu: %{"systemLoad" => system_load}, frame_stats: nil}}} ->
           {node, playing_players + (:math.pow(1.05, 100 * system_load) * 10 - 10)}
         {_host, %{node: node = %__MODULE__{}}} -> {node, @stats_no_stats}
         _ -> {:error, :malformed_data}
@@ -246,43 +250,10 @@ defmodule LavaPotion.Struct.Node do
   end
 
   def handle_frame({:text, message}, state) do
-    data = %{"op" => op} = Poison.decode!(message)
-    case op do
-      "stats" ->
-        stats = Poison.decode!(message, as: %Stats{})
-        [{_, map = %{}}] = :ets.lookup(@ets_lookup, state.host)
-        :ets.insert(@ets_lookup, {state.host, %{map | stats: stats}})
-
-      "playerUpdate" ->
-        %{"guildId" => guild_id, "state" => %{"position" => position, "time" => time}} = data
-        [{_, map = %{players: players = %{^guild_id => player = %Player{}}}}] = :ets.lookup(@ets_lookup, state.host)
-        players = Map.put(players, guild_id, %Player{player | raw_position: position, raw_timestamp: time})
-        :ets.insert(@ets_lookup, {state.host, %{map | players: players}})
-
-      "event" ->
-        # TODO: actual handling/event publishing
-        %{"guildId" => guild_id, "type" => type} = data
-        case type do
-          "TrackEndEvent" ->
-            [{_, map = %{players: players = %{^guild_id => player = %Player{}}}}] = :ets.lookup(@ets_lookup, state.host)
-            players = Map.put(players, guild_id, %Player{player | track: nil})
-            :ets.insert(@ets_lookup, {state.host, %{map | players: players}})
-
-          "TrackExceptionEvent" ->
-            Logger.error "error in player for guild id: #{guild_id} | message: #{data["error"]}"
-
-          "TrackStuckEvent" ->
-            Logger.warn "track stuck for player/guild id: #{guild_id}"
-
-          "WebSocketClosedEvent" ->
-            Logger.warn "audio websocket connection to discord closed for guild id: #{guild_id}, code: #{data["code"]}, reason: #{data["reason"]}"
-        end
-
-      _ ->
-        Logger.warn "Unhandled Event: #{op} | Data: #{message}"
-    end
+    data = %{"op" => _op} = Poison.decode!(message)
+    |> Map.merge(%{"host" => state.host})
+    Producer.notify(data)
     {:ok, state}
   end
-
   def handle_frame(_frame, state), do: {:ok, state}
 end
