@@ -4,8 +4,8 @@ defmodule LavaPotion.MixProject do
   def project do
     [
       app: :lavapotion,
-      version: "0.6.0",
-      elixir: "~> 1.7",
+      version: "1.0.0",
+      elixir: "~> 1.8",
       start_permanent: Mix.env() == :prod,
       deps: deps(),
       description: "Abstract Lavalink Client for Elixir.",
@@ -27,9 +27,9 @@ defmodule LavaPotion.MixProject do
 
   defp deps do
     [
-      {:poison, "~> 3.1"},
-      {:httpoison, "~> 0.13.0"},
-      {:websockex, "~> 0.4.0"},
+      {:jason , "~> 1.1"},
+      {:mojito, "~> 0.3.0"},
+      {:websockex, "~> 0.4.2"},
       {:gen_stage, "~> 0.14.1"}
     ]
   end
