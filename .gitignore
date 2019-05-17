@@ -4,3 +4,4 @@
 /config/
 *.iml
 *.lock
+.elixir_ls/
