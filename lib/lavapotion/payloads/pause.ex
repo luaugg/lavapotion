@@ -1,4 +1,4 @@
 defmodule LavaPotion.Payloads.Pause do
   @derive Jason.Encoder
-  defstruct [:op, :guildId, :pause]
+  defstruct [:guildId, :pause, op: "pause"]
 end

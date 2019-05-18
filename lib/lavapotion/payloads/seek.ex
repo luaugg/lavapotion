@@ -1,3 +1,3 @@
 defmodule LavaPotion.Payloads.Seek do
-  defstruct [:op, :guildId, :position]
+  defstruct [:guildId, :position, op: "seek"]
 end

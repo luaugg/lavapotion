@@ -1,4 +1,4 @@
 defmodule LavaPotion.Payloads.VoiceUpdate do
   @derive Jason.Encoder
-  defstruct [:op, :guildId, :sessionId, :event]
+  defstruct [:guildId, :sessionId, :event, op: "voiceUpdate"]
 end
