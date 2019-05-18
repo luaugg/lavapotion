@@ -1,7 +1,8 @@
 defmodule LavaPotion.Struct.Node do
   use WebSockex
 
-  alias LavaPotion.Struct.Client
+  alias LavaPotion.Struct.{Client, Player}
+  alias LavaPotion.Payloads.{EmptyBody, Pause, Volume, Play, VoiceUpdate}
 
   require Logger
 
@@ -55,11 +56,8 @@ defmodule LavaPotion.Struct.Node do
     result
   end
 
-  @spec table_name(String.t(), String.t()) :: atom()
-  def table_name(user_id, url) when is_binary(user_id) and is_binary(url) do
-    :"#{user_id}-#{url}"
-  end
-  @spec table_name(Client.t(), String.t()) :: atom()
+  @spec table_name(String.t() | Client.t(), String.t()) :: atom()
+  def table_name(user_id, url) when is_binary(user_id) and is_binary(url), do: :"#{user_id}-#{url}"
   def table_name(%Client{user_id: user_id}, url), do: table_name(user_id, url)
 
   @spec pid(String.t(), String.t()) :: pid()
@@ -74,4 +72,17 @@ defmodule LavaPotion.Struct.Node do
   @spec conn_url(t) :: String.t()
   def conn_url(%__MODULE__{host: host, absolute: true}), do: host
   def conn_url(%__MODULE__{host: host, port: port}), do: "ws://#{host}:#{port}"
+
+  def handle_cast({:voice_update, %Player{session_id: session_id, voice_token: voice_token, endpoint: endpoint, guild_id: guild_id}}, state) do
+    event = %{guild_id: guild_id, token: voice_token, endpoint: endpoint}
+    {result, term} = Jason.encode(%VoiceUpdate{guildId: guild_id, sessionId: session_id, event: event})
+    case result do
+      :ok -> {:reply, {:text, {:voice_update, term}}, state}
+      :error ->
+        Logger.warn "Failed to encode JSON Voice Update Data -> Guild ID: #{guild_id}"
+        {:ok, state}
+      _ ->
+        {:close, {1006, "Illegal Voice Update Encoding Result -> Guild ID: #{guild_id}"}, state}
+    end
+  end
 end
