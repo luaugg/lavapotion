@@ -36,13 +36,8 @@ defmodule LavaPotion.Struct.Node do
   end
 
   @spec start_link(t) :: {:ok, pid()} | {:error, term()}
-  def start_link(mod = %__MODULE__{host: host, absolute: true}) do
-    start_link_with_url(mod, host)
-  end
-
-  @spec start_link(t) :: {:ok, pid()} | {:error, term()}
-  def start_link(mod = %__MODULE__{host: host, port: port}) do
-    start_link_with_url(mod, "ws://#{host}:#{port}")
+  def start_link(mod = %__MODULE__{}) do
+    start_link_with_url(mod, conn_url(mod))
   end
 
   @spec start_link_with_url(t(), String.t()) :: {:ok, pid()} | {:error, term()}
@@ -51,7 +46,7 @@ defmodule LavaPotion.Struct.Node do
     result = WebSockex.start_link(url, __MODULE__, %{}, extra_headers: extra_headers, handle_initial_conn_failure: true, async: true)
     if elem(result, 0) === :ok do
       {:ok, pid} = result
-      ets_table_name = :"#{user_id}-#{url}"
+      ets_table_name = table_name(user_id, url)
       if :ets.whereis(ets_table_name) == :undefined do
         :ets.new(ets_table_name, [:set, :public, :named_table])
       end
@@ -60,4 +55,23 @@ defmodule LavaPotion.Struct.Node do
     result
   end
 
+  @spec table_name(String.t(), String.t()) :: atom()
+  def table_name(user_id, url) when is_binary(user_id) and is_binary(url) do
+    :"#{user_id}-#{url}"
+  end
+  @spec table_name(Client.t(), String.t()) :: atom()
+  def table_name(%Client{user_id: user_id}, url), do: table_name(user_id, url)
+
+  @spec pid(String.t(), String.t()) :: pid()
+  def pid(user_id, url) do
+    [{_, %{pid: pid}}] = :ets.lookup(table_name(user_id, url), url)
+    pid
+  end
+
+  @spec pid(t) :: pid()
+  def pid(mod = %__MODULE__{client: %Client{user_id: user_id}}), do: pid(user_id, conn_url(mod))
+
+  @spec conn_url(t) :: String.t()
+  def conn_url(%__MODULE__{host: host, absolute: true}), do: host
+  def conn_url(%__MODULE__{host: host, port: port}), do: "ws://#{host}:#{port}"
 end
