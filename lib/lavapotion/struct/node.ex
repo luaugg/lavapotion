@@ -107,6 +107,20 @@ defmodule LavaPotion.Struct.Node do
     end
   end
 
+  def handle_cast({:pause, player = %Player{guild_id: guild_id, is_real: true}, paused}, state) do
+    pause = %Pause{guildId: guild_id, pause: paused}
+    {result, term} = Jason.encode(pause)
+    case result do
+      :ok -> {:reply, {:text, {:outgoing, :pause, term, {player, paused}}}, state}
+      :error ->
+        %Jason.DecodeError{data: data, position: position, token: token} = term
+        Logger.warn "Failed to encode JSON Pause Data -> Guild ID: #{guild_id}, Position: #{position}, Token: #{token}, Data: #{data}"
+        {:ok, state}
+      _ ->
+        {:close, {1006, "Illegal Pause Encoding Result -> Guild ID: #{guild_id}"}}
+    end
+  end
+
   def handle_cast({:send, {:outgoing, event_type, json, data}}, state) do
     Producer.notify({:handle_outgoing, {event_type, data}})
     {:reply, {:text, json}, state}
