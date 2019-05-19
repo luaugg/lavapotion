@@ -3,6 +3,7 @@ defmodule LavaPotion.Struct.Node do
 
   alias LavaPotion.Struct.{Client, Player}
   alias LavaPotion.Payloads.{EmptyBody, Pause, Volume, Play, VoiceUpdate}
+  alias LavaPotion.Stage.Producer
 
   require Logger
 
@@ -73,16 +74,39 @@ defmodule LavaPotion.Struct.Node do
   def conn_url(%__MODULE__{host: host, absolute: true}), do: host
   def conn_url(%__MODULE__{host: host, port: port}), do: "ws://#{host}:#{port}"
 
-  def handle_cast({:voice_update, %Player{session_id: session_id, voice_token: voice_token, endpoint: endpoint, guild_id: guild_id}}, state) do
+  def handle_cast({:voice_update, player = %Player{session_id: session_id, voice_token: voice_token, endpoint: endpoint, guild_id: guild_id, is_real: false}}, state) do
     event = %{guild_id: guild_id, token: voice_token, endpoint: endpoint}
     {result, term} = Jason.encode(%VoiceUpdate{guildId: guild_id, sessionId: session_id, event: event})
     case result do
-      :ok -> {:reply, {:text, {:voice_update, term}}, state}
+      :ok -> {:reply, {:text, {:outgoing, :voice_update, term, {player}}}, state}
       :error ->
         Logger.warn "Failed to encode JSON Voice Update Data -> Guild ID: #{guild_id}"
         {:ok, state}
       _ ->
         {:close, {1006, "Illegal Voice Update Encoding Result -> Guild ID: #{guild_id}"}, state}
     end
+  end
+
+  def handle_cast({:play, player = %Player{guild_id: guild_id, is_real: true}, track = {data, _info}, start_time, end_time, no_replace}, state) do
+    play = %Play{}
+    |> Map.put(:guildId, guild_id)
+    |> Map.put(:startTime, start_time)
+    |> Map.put(:endTime, end_time)
+    |> Map.put(:noReplace, no_replace)
+    |> Map.put(:track, data)
+    {result, term} = Jason.encode(play)
+    case result do
+      :ok -> {:reply, {:text, {:outgoing, :play, term, {player, track}}}, state}
+      :error ->
+        Logger.warn "Failed to encode JSON Play Data -> Guild ID: #{guild_id}"
+        {:ok, state}
+      _ ->
+        {:close, {1006, "Illegal Play Encoding Result -> Guild ID: #{guild_id}"}, state}
+    end
+  end
+
+  def handle_cast({:send, {:outgoing, event_type, json, data}}, state) do
+    Producer.notify({:handle_outgoing, {event_type, data}})
+    {:reply, {:text, json}, state}
   end
 end
