@@ -78,7 +78,9 @@ defmodule LavaPotion.Struct.Node do
     event = %{guild_id: guild_id, token: voice_token, endpoint: endpoint}
     {result, term} = Jason.encode(%VoiceUpdate{guildId: guild_id, sessionId: session_id, event: event})
     case result do
-      :ok -> {:reply, {:text, {:outgoing, :voice_update, term, {player}}}, state}
+      :ok ->
+        WebSockex.cast(self(), {:outgoing, :voice_update, player})
+        {:reply, {:text, term}, state}
       :error ->
         %Jason.DecodeError{data: data, position: position, token: token} = term
         Logger.warn "Failed to encode JSON Voice Update Data -> Guild ID: #{guild_id}, Position: #{position}, Token: #{token}, Data: #{data}"
@@ -97,7 +99,9 @@ defmodule LavaPotion.Struct.Node do
     |> Map.put(:track, data)
     {result, term} = Jason.encode(play)
     case result do
-      :ok -> {:reply, {:text, {:outgoing, :play, term, {player, track}}}, state}
+      :ok ->
+        WebSockex.cast(self(), {:outgoing, :play, {player, track}})
+        {:reply, {:text, term}, state}
       :error ->
         %Jason.DecodeError{data: data, position: position, token: token} = term
         Logger.warn "Failed to encode JSON Play Data -> Guild ID: #{guild_id}, Position: #{position}, Token: #{token}, Data: #{data}"
@@ -111,7 +115,9 @@ defmodule LavaPotion.Struct.Node do
     pause = %Pause{guildId: guild_id, pause: paused}
     {result, term} = Jason.encode(pause)
     case result do
-      :ok -> {:reply, {:text, {:outgoing, :pause, term, {player, paused}}}, state}
+      :ok ->
+        WebSockex.cast(self(), {:outgoing, :pause, {player, paused}})
+        {:reply, {:text, term}, state}
       :error ->
         %Jason.DecodeError{data: data, position: position, token: token} = term
         Logger.warn "Failed to encode JSON Pause Data -> Guild ID: #{guild_id}, Position: #{position}, Token: #{token}, Data: #{data}"
@@ -121,8 +127,40 @@ defmodule LavaPotion.Struct.Node do
     end
   end
 
-  def handle_cast({:send, {:outgoing, event_type, json, data}}, state) do
+  def handle_cast({:stop, player = %Player{guild_id: guild_id, is_real: true}}, state) do
+    stop = %EmptyBody{op: "stop", guildId: guild_id}
+    {result, term} = Jason.encode(stop)
+    case result do
+      :ok ->
+        WebSockex.cast(self(), {:outgoing, :stop, player})
+        {:reply, {:text, term}, state}
+      :error ->
+        %Jason.DecodeError{data: data, position: position, token: token} = term
+        Logger.warn "Failed to encode JSON Stop Data -> Guild ID: #{guild_id}, Position: #{position}, Token: #{token}, Data: #{data}"
+        {:ok, state}
+      _ ->
+        {:close, {1006, "Illegal Stop Encoding Result -> Guild ID: #{guild_id}"}}
+    end
+  end
+
+  def handle_cast({:destroy, player = %Player{guild_id: guild_id, is_real: true}}, state) do
+    destroy = %EmptyBody{op: "destroy", guildId: guild_id}
+    {result, term} = Jason.encode(destroy)
+    case result do
+      :ok ->
+        WebSockex.cast(self(), {:outgoing, :destroy, player})
+        {:reply, {:text, term}, state}
+      :error ->
+        %Jason.DecodeError{data: data, position: position, token: token} = term
+        Logger.warn "Failed to encode JSON Destroy Data -> Guild ID: #{guild_id}, Position: #{position}, Token: #{token}, Data: #{data}"
+        {:ok, state}
+      _ ->
+        {:close, {1006, "Illegal Destroy Encoding Result -> Guild ID: #{guild_id}"}}
+    end
+  end
+
+  def handle_cast({:outgoing, event_type, data}, state) do
     Producer.notify({:handle_outgoing, {event_type, data}})
-    {:reply, {:text, json}, state}
+    {:ok, state}
   end
 end
