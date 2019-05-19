@@ -80,7 +80,8 @@ defmodule LavaPotion.Struct.Node do
     case result do
       :ok -> {:reply, {:text, {:outgoing, :voice_update, term, {player}}}, state}
       :error ->
-        Logger.warn "Failed to encode JSON Voice Update Data -> Guild ID: #{guild_id}"
+        %Jason.DecodeError{data: data, position: position, token: token} = term
+        Logger.warn "Failed to encode JSON Voice Update Data -> Guild ID: #{guild_id}, Position: #{position}, Token: #{token}, Data: #{data}"
         {:ok, state}
       _ ->
         {:close, {1006, "Illegal Voice Update Encoding Result -> Guild ID: #{guild_id}"}, state}
@@ -98,7 +99,8 @@ defmodule LavaPotion.Struct.Node do
     case result do
       :ok -> {:reply, {:text, {:outgoing, :play, term, {player, track}}}, state}
       :error ->
-        Logger.warn "Failed to encode JSON Play Data -> Guild ID: #{guild_id}"
+        %Jason.DecodeError{data: data, position: position, token: token} = term
+        Logger.warn "Failed to encode JSON Play Data -> Guild ID: #{guild_id}, Position: #{position}, Token: #{token}, Data: #{data}"
         {:ok, state}
       _ ->
         {:close, {1006, "Illegal Play Encoding Result -> Guild ID: #{guild_id}"}, state}
